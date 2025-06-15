@@ -1,10 +1,10 @@
+const cors = require('cors');
 const express = require("express");
 const bodyParser = require("body-parser");
-const cors = require("cors");
 const db = require("./queries");
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 5000;  // ✅ Use environment variable PORT
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -23,3 +23,4 @@ app.delete("/users/:id", db.deleteUser);
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+

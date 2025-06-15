@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
+const API_URL = "http://13.203.229.170:5000"; // your EC2 IP with backend port
+
 function App() {
   const [users, setUsers] = useState([]);
   const [name, setName] = useState("");
@@ -11,13 +13,23 @@ function App() {
   }, []);
 
   const fetchUsers = async () => {
-    const res = await axios.get("http://localhost:3001/users");
-    setUsers(res.data);
+    try {
+      const res = await axios.get(`${API_URL}/users`);
+      setUsers(res.data);
+    } catch (err) {
+      console.error("Fetch error:", err.message);
+    }
   };
 
   const addUser = async () => {
-    await axios.post("http://localhost:3001/users", { name, email });
-    setName(""); setEmail(""); fetchUsers();
+    try {
+      await axios.post(`${API_URL}/users`, { name, email });
+      setName("");
+      setEmail("");
+      fetchUsers();
+    } catch (err) {
+      console.error("Add error:", err.message);
+    }
   };
 
   return (
@@ -27,10 +39,13 @@ function App() {
       <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
       <button onClick={addUser}>Add User</button>
       <ul>
-        {users.map(u => <li key={u.id}>{u.name} ({u.email})</li>)}
+        {users.map(u => (
+          <li key={u.id}>{u.name} ({u.email})</li>
+        ))}
       </ul>
     </div>
   );
 }
 
 export default App;
+
