@@ -57,7 +57,7 @@ jobs:
             cd ..
 
             # Install frontend dependencies and build
-            cd webclient
+            cd client
             npm install
             npm run build
             sudo cp frontend.service /etc/systemd/system/
