@@ -7,11 +7,13 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     env:
       SSH_USER: ubuntu
-      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
-      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
+      PUBLIC_IP: "15.207.237.254"  # Public IP from your test
+      PRIVATE_IP: "12.0.2.154"     # Private IP from your test
+      SSH_KEY: ${{ secrets.SSH_KEY }}
 
     steps:
     - name: Checkout code
@@ -22,41 +24,67 @@ jobs:
       with:
         node-version: 20
 
-    - name: Set up SSH access
+    - name: Configure SSH Access
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        echo "${{ secrets.SSH_KEY_PUB }}" > ~/.ssh/id_rsa.pub
-        chmod 644 ~/.ssh/id_rsa.pub
-        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
+        echo "$SSH_KEY" > ~/.ssh/cft.pem
+        chmod 600 ~/.ssh/cft.pem
         
-    - name: Test SSH connection
-      run: ssh -T -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP exit
+        # Configure SSH to use the correct key
+        echo -e "Host $PUBLIC_IP\n  IdentityFile ~/.ssh/cft.pem\n  User $SSH_USER" > ~/.ssh/config
+        echo -e "Host $PRIVATE_IP\n  IdentityFile ~/.ssh/cft.pem\n  User $SSH_USER\n  ProxyJump $SSH_USER@$PUBLIC_IP" >> ~/.ssh/config
         
-    - name: Archive fullstack project
-      run: tar czf fullstack.tar.gz -C . server client
+        # Test connections
+        ssh -o ConnectTimeout=5 $PUBLIC_IP "echo 'Public connection OK'" || exit 1
+        ssh -o ConnectTimeout=5 $PRIVATE_IP "echo 'Private connection OK'" || exit 1
 
-    - name: Copy archive to Public EC2
-      run: scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
-        
-    - name: SSH into Public and Deploy to Private
+    - name: Build and Package
       run: |
-        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << 'EOF'
-          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP << 'INNER'
+        tar czf fullstack.tar.gz -C . server client
+        echo "Package size: $(du -h fullstack.tar.gz | cut -f1)"
+
+    - name: Deploy to Public Instance
+      run: |
+        scp -o ConnectTimeout=10 fullstack.tar.gz $PUBLIC_IP:/tmp/
+        ssh $PUBLIC_IP "ls -lh /tmp/fullstack.tar.gz"
+
+    - name: Deploy to Private Instance
+      run: |
+        ssh $PUBLIC_IP <<'EOF'
+          set -e
+          scp /tmp/fullstack.tar.gz $PRIVATE_IP:/tmp/
+          
+          ssh $PRIVATE_IP <<'INNER'
+            set -e
+            echo "Starting deployment at $(date)"
+            
+            # Clean deployment directory
             sudo rm -rf /opt/fullstack
             sudo mkdir -p /opt/fullstack
             sudo chown -R $USER:$USER /opt/fullstack
+            
+            # Extract and install
             sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+            
             cd /opt/fullstack/server
             npm ci --legacy-peer-deps
+            
             cd /opt/fullstack/client
             npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
             npm ci --legacy-peer-deps
             npm run build
+            
+            # Restart services
             sudo systemctl restart backend
             sudo systemctl restart frontend
+            echo "Deployment completed at $(date)"
           INNER
         EOF
+
+    - name: Verify Services
+      run: |
+        ssh $PRIVATE_IP "
+          curl -s http://localhost:3000/api/health || echo 'Backend not responding'
+          sudo systemctl status backend | grep 'active (running)' || echo 'Backend service down'
+          sudo systemctl status frontend | grep 'active (running)' || echo 'Frontend service down'
+        "
