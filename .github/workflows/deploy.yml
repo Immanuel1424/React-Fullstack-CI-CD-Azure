@@ -25,7 +25,7 @@ jobs:
 
       - name: Build and package fullstack app
         run: |
-          tar czf fullstack.tar.gz -C . server client
+          tar czf fullstack.tar.gz . --exclude='.git' --exclude='fullstack.tar.gz'
 
       - name: Copy app archive to public instance
         run: |
