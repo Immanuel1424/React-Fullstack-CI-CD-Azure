@@ -68,5 +68,5 @@ jobs:
             sudo systemctl start frontend.service
 
             echo "✅ Deployment completed at $(date -u)"
-EOT
-EOF
+            EOT
+          EOF
