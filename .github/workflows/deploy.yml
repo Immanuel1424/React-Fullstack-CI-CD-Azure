@@ -34,7 +34,7 @@ jobs:
       run: |
         ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} 'bash -s' <<'EOF'
           echo "🚀 Connecting to private instance..."
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} <<'INNER'
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} 'bash -s' <<'EOT'
             echo "🚀 Starting deployment at $(date -u)"
 
             # Setup destination directory
@@ -68,5 +68,5 @@ jobs:
             sudo systemctl start frontend.service
 
             echo "✅ Deployment completed at $(date -u)"
-          INNER
-        EOF
+EOT
+EOF
