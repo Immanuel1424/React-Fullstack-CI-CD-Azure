@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      EC2_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
-      SSH_USER: ubuntu
+      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
+      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
+      SSH_USER: fullstack
 
     steps:
     - name: Checkout Code
@@ -25,20 +26,10 @@ jobs:
     - name: Install and Build Frontend
       run: |
         cd client
+        rm -rf node_modules package-lock.json
         npm install --legacy-peer-deps --no-audit
         npm run build
         cd ..
-
-    - name: Debug Directory Contents
-      run: |
-        echo "Workspace directory:"
-        pwd
-        echo "Listing:"
-        ls -la
-        echo "Server contents:"
-        ls -la server
-        echo "Client contents:"
-        ls -la client
 
     - name: Compress App Files (without node_modules)
       run: |
@@ -50,23 +41,28 @@ jobs:
         echo "${{ secrets.SSH_KEY }}" > key.pem
         chmod 600 key.pem
 
-    - name: Upload Archive to EC2 Instance
+    - name: Upload Archive via Jump Host
       run: |
-        scp -o StrictHostKeyChecking=no -i key.pem fullstack.tar.gz $SSH_USER@$EC2_IP:/home/$SSH_USER/
+        scp -o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${PUBLIC_IP} \
+            -i key.pem fullstack.tar.gz $SSH_USER@${PRIVATE_IP}:/home/$SSH_USER/
 
-    - name: Remote Deploy on EC2 Instance
+    - name: Remote Deploy via Jump Host
       run: |
-        ssh -o StrictHostKeyChecking=no -i key.pem $SSH_USER@$EC2_IP << 'EOF'
+        ssh -o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${PUBLIC_IP} \
+            -i key.pem $SSH_USER@${PRIVATE_IP} << 'EOF'
+          set -e
           sudo systemctl stop backend.service frontend.service || true
           sudo rm -rf /opt/fullstack
           sudo mkdir -p /opt/fullstack
-          sudo tar xzf /home/ubuntu/fullstack.tar.gz -C /opt/fullstack --strip-components=0
-          sudo chown -R ubuntu:ubuntu /opt/fullstack
+          sudo tar xzf /home/fullstack/fullstack.tar.gz -C /opt/fullstack --strip-components=0
+          sudo chown -R fullstack:fullstack /opt/fullstack
 
           cd /opt/fullstack/server
+          rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps --no-audit
 
           cd /opt/fullstack/client
+          rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps --no-audit
           npm run build
 
