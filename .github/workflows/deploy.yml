@@ -22,7 +22,7 @@ jobs:
       with:
         node-version: 20
 
-    - name: Set up SSH key
+    - name: Set up SSH access
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
@@ -32,16 +32,16 @@ jobs:
     - name: Archive fullstack project
       run: tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy archive to public EC2
+    - name: Copy archive to Public EC2
       run: |
         scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
 
     - name: SSH into Public and Deploy to Private
       run: |
-        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << 'EOSSH'
-          ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
-          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP << 'EOINNER'
+        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP "\
+          ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts && \
+          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/ && \
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP 'bash -s' << 'INNER'
             sudo rm -rf /opt/fullstack
             sudo mkdir -p /opt/fullstack
             sudo chown -R $USER:$USER /opt/fullstack
@@ -57,5 +57,4 @@ jobs:
 
             sudo systemctl restart backend
             sudo systemctl restart frontend
-EOINNER
-EOSSH
+INNER"
