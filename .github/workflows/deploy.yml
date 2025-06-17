@@ -28,11 +28,11 @@ jobs:
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ env.PRIVATE_IP }} >> ~/.ssh/known_hosts
 
     - name: Install backend dependencies
       working-directory: ./server
-      run: |
-        npm install
+      run: npm install
 
     - name: Install frontend dependencies and build
       working-directory: ./client
@@ -42,21 +42,30 @@ jobs:
         npm run build
 
     - name: Archive project
-      run: |
-        tar czf fullstack.tar.gz -C . server client
+      run: tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy project to public EC2 instance
+    - name: Copy archive to public EC2
       run: |
         scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@${{ env.PUBLIC_IP }}:/tmp/
 
-    - name: Deploy on EC2
+    - name: Copy and deploy to private EC2 via public EC2
       run: |
-        ssh -o StrictHostKeyChecking=no $SSH_USER@${{ env.PUBLIC_IP }} << 'EOF'
-          sudo rm -rf /opt/fullstack
-          sudo mkdir -p /opt/fullstack
-          sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-          cd /opt/fullstack/server && npm install --legacy-peer-deps
-          cd /opt/fullstack/client && npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && npm install --legacy-peer-deps && npm run build
-          sudo systemctl restart fullstack-backend
-          sudo systemctl restart nginx
+        ssh -o StrictHostKeyChecking=no $SSH_USER@${{ env.PUBLIC_IP }} << EOF
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -o ProxyJump=$SSH_USER@${{ env.PUBLIC_IP }} /tmp/fullstack.tar.gz $SSH_USER@${{ env.PRIVATE_IP }}:/tmp/
+          ssh -o StrictHostKeyChecking=no $SSH_USER@${{ env.PRIVATE_IP }} << 'INNER_EOF'
+            sudo rm -rf /opt/fullstack
+            sudo mkdir -p /opt/fullstack
+            sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+
+            cd /opt/fullstack/server
+            npm install --legacy-peer-deps
+
+            cd /opt/fullstack/client
+            npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
+            npm install --legacy-peer-deps
+            npm run build
+
+            sudo systemctl restart backend
+            sudo systemctl restart frontend
+          INNER_EOF
         EOF
