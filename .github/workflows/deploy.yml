@@ -1,90 +1,80 @@
-name: Deploy Fullstack App
+name: Emergency Fullstack Deploy
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     env:
       SSH_USER: ubuntu
-      PUBLIC_IP: "15.207.237.254"  # Public IP from your test
-      PRIVATE_IP: "12.0.2.154"     # Private IP from your test
-      SSH_KEY: ${{ secrets.SSH_KEY }}
+      PUBLIC_IP: "15.207.237.254"  # Your public IP
+      PRIVATE_IP: "12.0.2.154"     # Your private IP
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 20
-
-    - name: Configure SSH Access
+    - name: Setup SSH Temporarily
       run: |
         mkdir -p ~/.ssh
-        echo "$SSH_KEY" > ~/.ssh/cft.pem
-        chmod 600 ~/.ssh/cft.pem
-        
-        # Configure SSH to use the correct key
-        echo -e "Host $PUBLIC_IP\n  IdentityFile ~/.ssh/cft.pem\n  User $SSH_USER" > ~/.ssh/config
-        echo -e "Host $PRIVATE_IP\n  IdentityFile ~/.ssh/cft.pem\n  User $SSH_USER\n  ProxyJump $SSH_USER@$PUBLIC_IP" >> ~/.ssh/config
-        
-        # Test connections
-        ssh -o ConnectTimeout=5 $PUBLIC_IP "echo 'Public connection OK'" || exit 1
-        ssh -o ConnectTimeout=5 $PRIVATE_IP "echo 'Private connection OK'" || exit 1
+        # PASTE YOUR KEY IN GITHUB SECRETS AS 'EMERGENCY_KEY'
+        echo "${{-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAyqVSRrz0rFG830XOCcV/k07PNHymTGhieNR3rb4hCvlVkQ2n
+SDiWV3d4xU38BgmUJdAtU50V6TlVuYQWVOPIEoFTm3R/tP55BQ1yCf5ad4dKkJP/
+krHGwBaXbjr21mUBmoT+xLrAaACAxOitTKgbERkf+0kNXXzFxyxeGCLfTwbVLsx9
+rLH6Zl2RYeT6NJAzJUNF9SfEyELzf2xuGAFUzxfbTILxBk0rRwUujraD4Nbc2hdN
+zI2l7c2yYs4VohIaZo94YBpyE2HbslJQV/1fc5Nv7f8GvfzPV89zdy9ZMn9C93x5
+Ag/fP3P/me4QQcxzVj+xqpkxe4APfAF/akWnTwIDAQABAoIBACgqiJpYza5yLRuc
+PHCXYugR0OQ4aMXwUsRcaLRZYTdJoHo12JhqDvKbTabeBDw2HdU45CMUmck2ghVZ
+ZwvAcmGonKfNeZqobdhgh+APOGNEv7TUgO3Uqu5cC/vfWBm6v4yfG9hmo8h5gQyG
+igMNtv+2mS43lpyXJKSL2MKz9ss01x8m44pOin7oVx31AZeGOtYfOuOX9nu2xVik
+/wCyi9M3s5lfE7QiKWBXKTd9E/P1fFaMtnGd/0s5Dg840iTIPbe6uwn2rDEuB2Op
+a5CQ0sHTW4Vm2djjEZh2RdEaGzaKJUSnaFUij74DSbjyOBiSjsV3Es5qsG6AmK0o
+K4DpAcECgYEA7hVFy+BdtGTpgAIPGD8CABZgW8ZtQh43CxxHnzldMTB3m5gUdVol
+n/SVV+JJhGImhUrhBPe7YVGhKScR/bUzZBwqcx05R19R8TO/L4YEjvSHk7NDrx+v
+xgOht87lW4J7cFs/gVLvSM/Z+r7RIHEQzv8l5O73WZzGRVjM33iTTHECgYEA2eVX
+L5ZKKtwSUX8g5e39xqj/WjkT8P42TB5bpCZinwhOho09Y+u7wQjgxWWheGZDPFKw
+fZn3Vun44JJFyEaIB14h9epHzNv8MoL5JjhnWOYJCQd8LMeM4Q5WhaG/Zt+P3iSj
+0jCWdd4t/OO05nVbNN/VkS/gdPRYIrUuire1D78CgYEAsD/HP7qFI/pgcYcUrZpX
+XMEz7DzkvUGo9eyliNXqi3OZ1/Gpk4Z8vAFQXZMDYaFXau2Xzxml+dF4QQLPasYt
+mTrQog9MS+3gt3LbYc8QqNOVWl4nCQmoEiq2GWBsomXiA7dJN++xfHGCqQGBx0Zs
+bxCreOL+8bQBg2zNndGhGcECgYA0rls++SIjbKPNKmRk0v6JWnCqeqRUntG345sa
+e+FaO+LoaxuNnf/98syNTT4V4vuciQ18wI3paJYwjYzrmAnpZhvl3efQItu9xqbA
+U+DAwJUspq+iD/kCrLnEg0/IaoLZHZiyB+dIxhfuTYt+MJ+FkByNhrrI7A6nDZEc
+HsBa9wKBgQDQ6GAx59TfjoOy6NrdqoPP5JFlei6fuSn37iR+sCdADccKkhJMJLhB
+laDxbVaIuBqG7tlZal6wKx6JOdtxnr+GRR/TFcjJhI1dbyfMxs0vkAvLAMQ4gHU/
+fMxCXClUJrouuJzIs94nGQyKkrz3ABpoXF2NSJnmFPkh4Jamjb48qw==
+-----END RSA PRIVATE KEY-----}}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        echo -e "Host $PUBLIC_IP\n  UserKnownHostsFile=/dev/null\n  StrictHostKeyChecking=no" > ~/.ssh/config
 
-    - name: Build and Package
+    - name: Verify Connections
       run: |
-        tar czf fullstack.tar.gz -C . server client
-        echo "Package size: $(du -h fullstack.tar.gz | cut -f1)"
+        ssh -i ~/.ssh/deploy_key $SSH_USER@$PUBLIC_IP "echo 'Public OK'"
+        ssh -i ~/.ssh/deploy_key $SSH_USER@$PRIVATE_IP "echo 'Private OK'"
 
     - name: Deploy to Public Instance
       run: |
-        scp -o ConnectTimeout=10 fullstack.tar.gz $PUBLIC_IP:/tmp/
-        ssh $PUBLIC_IP "ls -lh /tmp/fullstack.tar.gz"
+        scp -i ~/.ssh/deploy_key -r ./server $SSH_USER@$PUBLIC_IP:/tmp/
+        scp -i ~/.ssh/deploy_key -r ./client $SSH_USER@$PUBLIC_IP:/tmp/
 
     - name: Deploy to Private Instance
       run: |
-        ssh $PUBLIC_IP <<'EOF'
-          set -e
-          scp /tmp/fullstack.tar.gz $PRIVATE_IP:/tmp/
+        ssh -i ~/.ssh/deploy_key $SSH_USER@$PUBLIC_IP << 'EOF'
+          scp -r /tmp/server $SSH_USER@$PRIVATE_IP:/opt/
+          scp -r /tmp/client $SSH_USER@$PRIVATE_IP:/opt/
           
-          ssh $PRIVATE_IP <<'INNER'
-            set -e
-            echo "Starting deployment at $(date)"
-            
-            # Clean deployment directory
-            sudo rm -rf /opt/fullstack
-            sudo mkdir -p /opt/fullstack
-            sudo chown -R $USER:$USER /opt/fullstack
-            
-            # Extract and install
-            sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-            
-            cd /opt/fullstack/server
-            npm ci --legacy-peer-deps
-            
-            cd /opt/fullstack/client
-            npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
-            npm ci --legacy-peer-deps
-            npm run build
-            
-            # Restart services
+          ssh $SSH_USER@$PRIVATE_IP << 'INNER'
+            cd /opt/server && npm ci
+            cd /opt/client && npm ci && npm run build
             sudo systemctl restart backend
             sudo systemctl restart frontend
-            echo "Deployment completed at $(date)"
           INNER
         EOF
 
-    - name: Verify Services
-      run: |
-        ssh $PRIVATE_IP "
-          curl -s http://localhost:3000/api/health || echo 'Backend not responding'
-          sudo systemctl status backend | grep 'active (running)' || echo 'Backend service down'
-          sudo systemctl status frontend | grep 'active (running)' || echo 'Frontend service down'
-        "
+    - name: Cleanup Key
+      if: always()
+      run: rm -f ~/.ssh/deploy_key
