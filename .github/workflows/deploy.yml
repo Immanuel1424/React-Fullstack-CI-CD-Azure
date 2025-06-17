@@ -2,7 +2,7 @@ name: Deploy Fullstack App
 
 on:
   push:
-    branches: [ "main" ]  # CI/CD triggers on every commit to main
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -22,18 +22,18 @@ jobs:
       with:
         node-version: 20
 
-    - name: Setup SSH Key
+    - name: Setup SSH key
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ env.PRIVATE_IP }} >> ~/.ssh/known_hosts
 
     - name: Install backend dependencies
       working-directory: ./server
       run: |
-        npm install --legacy-peer-deps
+        npm install
 
     - name: Install frontend dependencies and build
       working-directory: ./client
@@ -42,30 +42,31 @@ jobs:
         npm install --legacy-peer-deps
         npm run build
 
-    - name: Archive fullstack app
+    - name: Archive project
       run: |
         tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy archive to public EC2
+    - name: Copy archive to public EC2 instance
       run: |
-        scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
+        scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@${{ env.PUBLIC_IP }}:/tmp/
 
-    - name: Remote Deploy from Public to Private EC2
+    - name: SSH into public instance and trigger deploy on private
       run: |
-        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << EOF
-          # Copy to private EC2
-          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz ubuntu@$PRIVATE_IP:/tmp/
+        ssh -o StrictHostKeyChecking=no $SSH_USER@${{ env.PUBLIC_IP }} << 'EOF'
+          # Forward archive to private instance
+          scp /tmp/fullstack.tar.gz ubuntu@${{ env.PRIVATE_IP }}:/tmp/
 
-          # Connect to private EC2 and deploy
-          ssh -o StrictHostKeyChecking=no ubuntu@$PRIVATE_IP << 'INNER'
-            set -e
+          # SSH into private instance and deploy
+          ssh ubuntu@${{ env.PRIVATE_IP }} << 'INNER_EOF'
             sudo rm -rf /opt/fullstack
             sudo mkdir -p /opt/fullstack
             sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-            cd /opt/fullstack/server && sudo npm install --legacy-peer-deps
-            cd /opt/fullstack/client && sudo npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && sudo npm install --legacy-peer-deps && npm run build
-            sudo systemctl restart backend.service
-            sudo systemctl restart frontend.service
-            sudo systemctl restart nginx
-          INNER
+            sudo chown -R ubuntu:ubuntu /opt/fullstack
+
+            cd /opt/fullstack/server && npm install --legacy-peer-deps
+            cd /opt/fullstack/client && npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && npm install --legacy-peer-deps && npm run build
+
+            sudo systemctl restart backend
+            sudo systemctl restart frontend
+          INNER_EOF
         EOF
