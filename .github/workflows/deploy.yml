@@ -1,18 +1,30 @@
-- name: Configure SSH Access
-  run: |
-    mkdir -p ~/.ssh
-    echo "$SSH_KEY" > ~/.ssh/cft.pem
-    chmod 600 ~/.ssh/cft.pem
+name: Deploy Fullstack App
 
-    # Debug step to check PEM formatting
-    echo "🔍 First few lines of PEM:"
-    head -n 5 ~/.ssh/cft.pem
-    echo "🔍 File type:"
-    file ~/.ssh/cft.pem
+on:
+  push:
+    branches: ["main"]
 
-    # Pre-accept host keys
-    ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-    ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-    # Test connection to public instance
-    ssh -i ~/.ssh/cft.pem -o ConnectTimeout=5 $SSH_USER@$PUBLIC_IP "echo 'Public instance connection successful'"
+    env:
+      SSH_USER: ubuntu
+      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
+      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure SSH Access
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" > ~/.ssh/cft.pem
+        chmod 600 ~/.ssh/cft.pem
+        head -n 5 ~/.ssh/cft.pem
+        file ~/.ssh/cft.pem
+        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
+        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
+        ssh -i ~/.ssh/cft.pem -o ConnectTimeout=5 $SSH_USER@$PUBLIC_IP "echo 'Public instance connection successful'"
