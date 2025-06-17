@@ -50,20 +50,22 @@ jobs:
             # Install backend dependencies and setup
             cd server
             npm install
-            sudo cp backend.service /etc/systemd/system/
+            # sudo cp backend.service /etc/systemd/system/
             sudo systemctl daemon-reexec
             sudo systemctl daemon-reload
-            sudo systemctl restart backend.service
+            sudo systemctl enable backend.service
+            sudo systemctl start backend.service
             cd ..
 
             # Install frontend dependencies and build
             cd client
             npm install
             npm run build
-            sudo cp frontend.service /etc/systemd/system/
+            # sudo cp frontend.service /etc/systemd/system/
             sudo systemctl daemon-reexec
             sudo systemctl daemon-reload
-            sudo systemctl restart frontend.service
+            sudo systemctl enable frontend.service
+            sudo systemctl start frontend.service
 
             echo "✅ Deployment completed at $(date -u)"
           INNER
