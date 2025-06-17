@@ -1,4 +1,4 @@
-name: Deploy Fullstack App via Bastion
+name: Fullstack App CI/CD
 
 on:
   push:
@@ -8,57 +8,52 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
-      SSH_USER: fullstack
-      PRIVATE_IP: 10.0.2.10         # Replace with your actual private EC2 IP
-      PUBLIC_IP: ec2-x-x-x-x.compute.amazonaws.com  # Replace with your public EC2 DNS
+      SSH_USER: ubuntu
 
     steps:
-    - name: Checkout Repo
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/cft.pem
+        chmod 600 ~/.ssh/cft.pem
+        echo "Host *" >> ~/.ssh/config
+        echo "  IdentityFile ~/.ssh/cft.pem" >> ~/.ssh/config
+        echo "  StrictHostKeyChecking no" >> ~/.ssh/config
 
-    - name: Compress App Files
+    - name: Install dependencies and build frontend
+      working-directory: ./client
+      run: |
+        npm ci
+        npm run build
+
+    - name: Archive fullstack app
       run: |
         tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy app to EC2 via Bastion Host
+    - name: Upload to private EC2 via public jump host
       run: |
-        scp -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} \
+        scp -o ProxyJump=${{ env.SSH_USER }}@${{ secrets.PUBLIC_INSTANCE_IP }} \
             -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            fullstack.tar.gz ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }}:/tmp/
+            fullstack.tar.gz ${{ env.SSH_USER }}@${{ secrets.PRIVATE_INSTANCE_IP }}:/tmp/
 
-    - name: Deploy on Private EC2
+    - name: Deploy app on private instance
       run: |
-        ssh -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} \
+        ssh -o ProxyJump=${{ env.SSH_USER }}@${{ secrets.PUBLIC_INSTANCE_IP }} \
             -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }} << 'EOF'
-          set -e
-          echo "📦 Extracting files..."
-          mkdir -p /opt/fullstack
-          tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack --overwrite
-
-          echo "🚀 Installing backend dependencies..."
+            ${{ env.SSH_USER }}@${{ secrets.PRIVATE_INSTANCE_IP }} << 'EOF'
+          sudo rm -rf /opt/fullstack
+          sudo mkdir -p /opt/fullstack
+          sudo tar -xzf /tmp/fullstack.tar.gz -C /opt/fullstack
           cd /opt/fullstack/server
-          npm install --legacy-peer-deps
+          npm install
           sudo systemctl restart fullstack-backend
-
-          echo "🌐 Installing frontend dependencies..."
           cd /opt/fullstack/client
-
-          # Fix AJV module error
-          npm install ajv@6 ajv-keywords@3 --save-exact
           npm install --legacy-peer-deps
-
-          echo "🔧 Building frontend..."
           npm run build
-
-          echo "📡 Restarting frontend service..."
           sudo systemctl restart fullstack-frontend
         EOF
