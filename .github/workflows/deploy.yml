@@ -1,4 +1,4 @@
-name: Deploy Fullstack App via Bastion
+name: Deploy Fullstack App
 
 on:
   push:
@@ -12,41 +12,60 @@ jobs:
       SSH_USER: ubuntu
       PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
       PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
-      BASTION_KEY: ${{ secrets.SSH_KEY }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup SSH key
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+
+    - name: Setup SSH Access
       run: |
         mkdir -p ~/.ssh
-        echo "$BASTION_KEY" > ~/.ssh/id_rsa
+        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
 
-    - name: Archive app
+        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+
+    - name: Install backend dependencies
+      working-directory: ./server
+      run: |
+        npm install
+
+    - name: Install frontend dependencies and build
+      working-directory: ./client
+      run: |
+        npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
+        npm install --legacy-peer-deps
+        npm run build
+
+    - name: Archive fullstack app
       run: |
         tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy tar to private EC2 via bastion
+    - name: Copy archive to private instance via public jump host
       run: |
         scp -o ProxyJump=$SSH_USER@$PUBLIC_IP -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
 
-    - name: Deploy to private EC2
+    - name: SSH to private instance and deploy
       run: |
         ssh -o ProxyJump=$SSH_USER@$PUBLIC_IP -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP << 'EOF'
-          set -e
           sudo rm -rf /opt/fullstack
           sudo mkdir -p /opt/fullstack
           sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+
           cd /opt/fullstack/server
           npm install --legacy-peer-deps
+
           cd /opt/fullstack/client
           npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
           npm install --legacy-peer-deps
           npm run build
-          sudo systemctl restart backend
-          sudo systemctl restart frontend
-        EOF
+
+          sudo systemctl restart backend.service
+          sudo systemctl restart frontend.service
+EOF
