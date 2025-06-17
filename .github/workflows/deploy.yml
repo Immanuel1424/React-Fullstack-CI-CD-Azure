@@ -25,7 +25,9 @@ jobs:
 
       - name: Build and package fullstack app
         run: |
-          tar --exclude='.git' --exclude='fullstack.tar.gz' -czf fullstack.tar.gz .
+          mkdir -p /tmp/fullstack-build
+          tar --exclude='.git' --exclude='fullstack.tar.gz' -czf /tmp/fullstack-build/fullstack.tar.gz .
+          cp /tmp/fullstack-build/fullstack.tar.gz .
 
       - name: Copy app archive to public instance
         run: |
