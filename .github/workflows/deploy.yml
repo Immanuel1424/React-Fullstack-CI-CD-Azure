@@ -1,71 +1,61 @@
-name: Fullstack App CI/CD
+name: Deploy Fullstack App to EC2 via Bastion Host
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+
+env:
+  SSH_USER: fullstack
+  PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
+  PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
-      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
-      SSH_USER: fullstack
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+    - name: Checkout Repo
+      uses: actions/checkout@v4
 
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: 18
 
-    - name: Install and Build Frontend
+    - name: Install and Build Frontend (React)
       run: |
         cd client
         rm -rf node_modules package-lock.json
+        npm install ajv@6 ajv-keywords@3 --save-exact
         npm install --legacy-peer-deps --no-audit
         npm run build
         cd ..
 
-    - name: Compress App Files (without node_modules)
+    - name: Install Backend Dependencies (Node.js)
       run: |
-        tar --exclude='client/node_modules' --exclude='server/node_modules' \
-            -czf fullstack.tar.gz -C . server client
+        cd server
+        npm install --legacy-peer-deps
+        cd ..
 
-    - name: Prepare SSH Key
+    - name: Compress App Files
       run: |
-        echo "${{ secrets.SSH_KEY }}" > key.pem
-        chmod 600 key.pem
+        tar czf fullstack.tar.gz server client
 
-    - name: Upload Archive via Jump Host
+    - name: Copy app to EC2 via Bastion Host
       run: |
-        scp -o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${PUBLIC_IP} \
-            -i key.pem fullstack.tar.gz $SSH_USER@${PRIVATE_IP}:/home/$SSH_USER/
+        scp -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} -o StrictHostKeyChecking=no fullstack.tar.gz ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }}:/tmp/
 
-    - name: Remote Deploy via Jump Host
+    - name: Deploy on Private EC2
       run: |
-        ssh -o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${PUBLIC_IP} \
-            -i key.pem $SSH_USER@${PRIVATE_IP} << 'EOF'
-          set -e
-          sudo systemctl stop backend.service frontend.service || true
-          sudo rm -rf /opt/fullstack
-          sudo mkdir -p /opt/fullstack
-          sudo tar xzf /home/fullstack/fullstack.tar.gz -C /opt/fullstack --strip-components=0
-          sudo chown -R fullstack:fullstack /opt/fullstack
-
+        ssh -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }} << 'EOF'
+          mkdir -p /opt/fullstack
+          tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack --overwrite
           cd /opt/fullstack/server
-          rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps --no-audit
-
+          npm install --legacy-peer-deps
+          sudo systemctl restart fullstack-backend
           cd /opt/fullstack/client
-          rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps --no-audit
+          npm install ajv@6 ajv-keywords@3 --save-exact
+          npm install --legacy-peer-deps
           npm run build
-
-          sudo systemctl daemon-reload
-          sudo systemctl restart backend.service frontend.service
+          sudo systemctl restart fullstack-frontend
         EOF
