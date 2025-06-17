@@ -2,8 +2,7 @@ name: Deploy Fullstack App
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ "main" ]  # CI/CD triggers on every commit to main
 
 jobs:
   deploy:
@@ -11,8 +10,8 @@ jobs:
 
     env:
       SSH_USER: ubuntu
-      JUMP_HOST: ${{ secrets.PUBLIC_INSTANCE_IP }}
-      TARGET_HOST: ${{ secrets.PRIVATE_INSTANCE_IP }}
+      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
+      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
 
     steps:
     - name: Checkout code
@@ -23,17 +22,18 @@ jobs:
       with:
         node-version: 20
 
-    - name: Setup SSH key
+    - name: Setup SSH Key
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H $JUMP_HOST >> ~/.ssh/known_hosts
-        ssh-keyscan -H $TARGET_HOST >> ~/.ssh/known_hosts
+        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
+        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
 
     - name: Install backend dependencies
       working-directory: ./server
-      run: npm install
+      run: |
+        npm install --legacy-peer-deps
 
     - name: Install frontend dependencies and build
       working-directory: ./client
@@ -42,31 +42,30 @@ jobs:
         npm install --legacy-peer-deps
         npm run build
 
-    - name: Archive project
+    - name: Archive fullstack app
       run: |
         tar czf fullstack.tar.gz -C . server client
 
-    - name: Copy project to private EC2 instance via jump host
+    - name: Copy archive to public EC2
       run: |
-        scp -o ProxyJump=$SSH_USER@$JUMP_HOST -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$TARGET_HOST:/tmp/
+        scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
 
-    - name: Deploy on private EC2 instance
+    - name: Remote Deploy from Public to Private EC2
       run: |
-        ssh -o ProxyJump=$SSH_USER@$JUMP_HOST -o StrictHostKeyChecking=no $SSH_USER@$TARGET_HOST << 'EOF'
-          sudo rm -rf /opt/fullstack
-          sudo mkdir -p /opt/fullstack
-          sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-          sudo chown -R $USER:$USER /opt/fullstack
-          
-          cd /opt/fullstack/server
-          npm install --legacy-peer-deps
-          
-          cd /opt/fullstack/client
-          npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
-          npm install --legacy-peer-deps
-          npm run build
+        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << EOF
+          # Copy to private EC2
+          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz ubuntu@$PRIVATE_IP:/tmp/
 
-          sudo systemctl restart backend
-          sudo systemctl restart frontend
-          sudo systemctl restart nginx
+          # Connect to private EC2 and deploy
+          ssh -o StrictHostKeyChecking=no ubuntu@$PRIVATE_IP << 'INNER'
+            set -e
+            sudo rm -rf /opt/fullstack
+            sudo mkdir -p /opt/fullstack
+            sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+            cd /opt/fullstack/server && sudo npm install --legacy-peer-deps
+            cd /opt/fullstack/client && sudo npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && sudo npm install --legacy-peer-deps && npm run build
+            sudo systemctl restart backend.service
+            sudo systemctl restart frontend.service
+            sudo systemctl restart nginx
+          INNER
         EOF
