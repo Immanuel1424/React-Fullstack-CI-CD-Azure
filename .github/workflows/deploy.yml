@@ -29,17 +29,6 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
 
-    - name: Install backend dependencies
-      working-directory: ./server
-      run: npm ci
-
-    - name: Install frontend dependencies and build
-      working-directory: ./client
-      run: |
-        npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
-        npm ci --legacy-peer-deps
-        npm run build
-
     - name: Archive fullstack project
       run: tar czf fullstack.tar.gz -C . server client
 
@@ -49,11 +38,10 @@ jobs:
 
     - name: SSH into Public and Deploy to Private
       run: |
-        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << 'EOF'
-          ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
-          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
-
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP << 'INNER'
+        ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP "\
+          ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts && \
+          scp -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/ && \
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP 'bash -s' << 'INNER'
             sudo rm -rf /opt/fullstack
             sudo mkdir -p /opt/fullstack
             sudo chown -R $USER:$USER /opt/fullstack
@@ -69,5 +57,4 @@ jobs:
 
             sudo systemctl restart backend
             sudo systemctl restart frontend
-          INNER
-        EOF
+INNER"
