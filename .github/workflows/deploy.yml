@@ -28,7 +28,7 @@ jobs:
     - name: Install dependencies and build frontend
       working-directory: ./client
       run: |
-        npm ci
+        npm install --legacy-peer-deps
         npm run build
 
     - name: Archive fullstack app
