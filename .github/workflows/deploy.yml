@@ -1,72 +1,38 @@
-name: Deploy Fullstack App
-
-on:
-  push:
-    branches: [ "main" ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
-
-      - name: Add public instance to known_hosts
-        run: ssh-keyscan -H ${{ secrets.PUBLIC_INSTANCE_IP }} >> ~/.ssh/known_hosts
-
-      - name: Test SSH connection to public instance
-        run: ssh -o StrictHostKeyChecking=yes ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
-
-      - name: Build and package fullstack app
-        run: |
-          tar czf fullstack.tar.gz -C . server client
-
-      - name: Copy app archive to public instance
-        run: scp fullstack.tar.gz ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }}:/tmp/
-
       - name: Deploy from public to private instance
         run: |
           ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} 'bash -s' <<'EOF'
-echo "🚀 Connecting to private instance..."
-ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} 'bash -s' <<'EOT'
-echo "🚀 Starting deployment at $(date -u)"
+          echo "🚀 Connecting to private instance..."
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} 'bash -s' <<'EOT'
+          echo "🚀 Starting deployment at $(date -u)"
 
-# Setup destination directory
-sudo rm -rf /opt/fullstack
-sudo mkdir -p /opt/fullstack
-sudo chown ubuntu:ubuntu /opt/fullstack
-cd /opt/fullstack
+          # Setup destination directory
+          sudo rm -rf /opt/fullstack
+          sudo mkdir -p /opt/fullstack
+          sudo chown ubuntu:ubuntu /opt/fullstack
+          cd /opt/fullstack
 
-# Extract archive
-cp /tmp/fullstack.tar.gz .
-tar xzf fullstack.tar.gz
+          # Extract archive
+          cp /tmp/fullstack.tar.gz .
+          tar xzf fullstack.tar.gz
 
-# Install backend dependencies and setup
-cd server
-npm install
-# sudo cp backend.service /etc/systemd/system/
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable backend.service
-sudo systemctl start backend.service
-cd ..
+          # Install backend dependencies and setup
+          cd server
+          npm install
+          sudo systemctl daemon-reexec
+          sudo systemctl daemon-reload
+          sudo systemctl enable backend.service
+          sudo systemctl start backend.service
+          cd ..
 
-# Install frontend dependencies and build
-cd client
-npm install
-npm run build
-# sudo cp frontend.service /etc/systemd/system/
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable frontend.service
-sudo systemctl start frontend.service
+          # Install frontend dependencies and build
+          cd client
+          npm install
+          npm run build
+          sudo systemctl daemon-reexec
+          sudo systemctl daemon-reload
+          sudo systemctl enable frontend.service
+          sudo systemctl start frontend.service
 
-echo "✅ Deployment completed at $(date -u)"
-EOT
-EOF
+          echo "✅ Deployment completed at $(date -u)"
+          EOT
+          EOF
