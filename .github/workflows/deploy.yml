@@ -45,20 +45,25 @@ jobs:
     - name: Remote Deploy on EC2 Instance
       run: |
         ssh -o StrictHostKeyChecking=no -i key.pem $SSH_USER@$EC2_IP << 'EOF'
+          # Stop existing services if they exist
           sudo systemctl stop backend.service frontend.service || true
-          rm -rf /opt/fullstack
-          mkdir -p /opt/fullstack
-          tar xzf /home/ubuntu/fullstack.tar.gz -C /opt/fullstack --strip-components=1
 
+          # Clean and prepare deployment folder
+          sudo rm -rf /opt/fullstack
+          sudo mkdir -p /opt/fullstack
+          sudo tar xzf /home/ubuntu/fullstack.tar.gz -C /opt/fullstack --strip-components=1
+          sudo chown -R ubuntu:ubuntu /opt/fullstack
 
+          # Install backend dependencies
           cd /opt/fullstack/server
           npm install --legacy-peer-deps --no-audit
 
+          # Install frontend dependencies & rebuild
           cd /opt/fullstack/client
           npm install --legacy-peer-deps --no-audit
           npm run build
 
+          # Restart services
           sudo systemctl daemon-reload
           sudo systemctl restart backend.service frontend.service
         EOF
-
