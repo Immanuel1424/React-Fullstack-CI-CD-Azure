@@ -1,12 +1,14 @@
-const Pool = require("pg").Pool;
+const { Pool } = require('pg');
 
 const pool = new Pool({
-  user: "postgres",
+  user: "fullstack",
   host: "localhost",
-  database: "reactdb",
-  password: "postgres",
+  database: "fullstackdb",
+  password: "react@123",
   port: 5432,
 });
+
+module.exports = pool;
 
 const getUsers = (req, res) => {
   console.log("✅ GET /users called");
@@ -81,4 +83,5 @@ const deleteUser = (req, res) => {
 };
 
 module.exports = { getUsers, getUserById, createUser, updateUser, deleteUser };
+
 

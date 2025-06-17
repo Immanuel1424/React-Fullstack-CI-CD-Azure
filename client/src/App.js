@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./App.css"; // Custom CSS for styles
 
-const API_URL = "http://13.232.69.9:5000"; // your EC2 IP
+//const API_URL = "http://12.0.2.172:5000";
+const API_URL = "/api";
 
 function App() {
   const [users, setUsers] = useState([]);
