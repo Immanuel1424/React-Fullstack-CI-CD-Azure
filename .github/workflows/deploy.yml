@@ -32,7 +32,7 @@ jobs:
 
     - name: Deploy from public to private instance
       run: |
-        ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} <<'EOF'
+        ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} 'bash -s' <<'EOF'
           echo "🚀 Connecting to private instance..."
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} <<'INNER'
             echo "🚀 Starting deployment at $(date -u)"
