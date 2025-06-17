@@ -57,7 +57,7 @@ function App() {
 
   return (
     <div className="container">
-      <h1>User Management github actions</h1>
+      <h1>User Management - React</h1>
       <div className="form">
         <input
           value={name}
