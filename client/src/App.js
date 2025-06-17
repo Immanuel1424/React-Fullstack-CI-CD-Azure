@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import "./App.css"; // Custom CSS for styles
 
-const API_URL = "http://13.203.229.170:5000"; // your EC2 IP with backend port
+const API_URL = "http://13.232.69.9:5000"; // your EC2 IP
 
 function App() {
   const [users, setUsers] = useState([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [editId, setEditId] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -21,28 +23,76 @@ function App() {
     }
   };
 
-  const addUser = async () => {
+  const addOrUpdateUser = async () => {
     try {
-      await axios.post(`${API_URL}/users`, { name, email });
+      if (editId) {
+        await axios.put(`${API_URL}/users/${editId}`, { name, email });
+      } else {
+        await axios.post(`${API_URL}/users`, { name, email });
+      }
       setName("");
       setEmail("");
+      setEditId(null);
       fetchUsers();
     } catch (err) {
-      console.error("Add error:", err.message);
+      console.error("Submit error:", err.message);
+    }
+  };
+
+  const handleEdit = (user) => {
+    setName(user.name);
+    setEmail(user.email);
+    setEditId(user.id);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`${API_URL}/users/${id}`);
+      fetchUsers();
+    } catch (err) {
+      console.error("Delete error:", err.message);
     }
   };
 
   return (
-    <div>
-      <h1>User List</h1>
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" />
-      <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
-      <button onClick={addUser}>Add User</button>
-      <ul>
-        {users.map(u => (
-          <li key={u.id}>{u.name} ({u.email})</li>
-        ))}
-      </ul>
+    <div className="container">
+      <h1>User Management</h1>
+      <div className="form">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+        />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+        />
+        <button onClick={addOrUpdateUser}>
+          {editId ? "Update User" : "Add User"}
+        </button>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Email</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id}>
+              <td>{u.id}</td>
+              <td>{u.name}</td>
+              <td>{u.email}</td>
+              <td>
+                <button className="edit" onClick={() => handleEdit(u)}>Edit</button>
+                <button className="delete" onClick={() => handleDelete(u.id)}>Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
