@@ -7,6 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     env:
       SSH_USER: ubuntu
@@ -18,13 +19,61 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+
     - name: Configure SSH Access
       run: |
         mkdir -p ~/.ssh
-        echo "$SSH_KEY" > ~/.ssh/cft.pem
+        echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/cft.pem  # remove CR if accidentally copied from Windows
         chmod 600 ~/.ssh/cft.pem
-        head -n 5 ~/.ssh/cft.pem
-        file ~/.ssh/cft.pem
-        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
-        ssh -i ~/.ssh/cft.pem -o ConnectTimeout=5 $SSH_USER@$PUBLIC_IP "echo 'Public instance connection successful'"
+
+        # Pre-accept host keys for both instances
+        ssh-keyscan -H "$PUBLIC_IP" >> ~/.ssh/known_hosts
+        ssh-keyscan -H "$PRIVATE_IP" >> ~/.ssh/known_hosts
+
+        # Test connection to public instance
+        ssh -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 $SSH_USER@$PUBLIC_IP "echo '✅ Public instance connection successful'"
+
+    - name: Build and Package
+      run: tar czf fullstack.tar.gz -C . server client
+
+    - name: Deploy to Public Instance
+      run: |
+        scp -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no -o ConnectTimeout=10 fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
+        ssh -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP "ls -lh /tmp/fullstack.tar.gz"
+
+    - name: Deploy to Private Instance via Public Jump Host
+      run: |
+        ssh -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP <<'EOF'
+          set -e
+
+          echo "📦 Transferring to private instance..."
+          scp -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
+
+          echo "🚀 Running deployment on private instance..."
+          ssh -i ~/.ssh/cft.pem -o StrictHostKeyChecking=no $SSH_USER@$PRIVATE_IP <<'INNER'
+            set -e
+            echo "🔧 Starting deployment at $(date)"
+
+            sudo rm -rf /opt/fullstack
+            sudo mkdir -p /opt/fullstack
+            sudo chown -R $USER:$USER /opt/fullstack
+
+            sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+
+            cd /opt/fullstack/server
+            npm ci --legacy-peer-deps
+
+            cd /opt/fullstack/client
+            npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
+            npm ci --legacy-peer-deps
+            npm run build
+
+            sudo systemctl restart backend
+            sudo systemctl restart frontend
+            echo "✅ Deployment completed at $(date)"
+          INNER
+        EOF
