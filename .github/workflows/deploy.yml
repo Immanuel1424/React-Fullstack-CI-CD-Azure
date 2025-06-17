@@ -31,16 +31,16 @@ jobs:
         chmod 644 ~/.ssh/id_rsa.pub
         ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
         ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
-
+        
     - name: Test SSH connection
       run: ssh -T -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP exit
-
+        
     - name: Archive fullstack project
       run: tar czf fullstack.tar.gz -C . server client
 
     - name: Copy archive to Public EC2
       run: scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
-
+        
     - name: SSH into Public and Deploy to Private
       run: |
         ssh -o StrictHostKeyChecking=no $SSH_USER@$PUBLIC_IP << 'EOF'
