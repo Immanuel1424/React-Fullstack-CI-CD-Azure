@@ -17,17 +17,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup SSH key
-      uses: webfactory/ssh-agent@v0.9.0
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
       with:
-        ssh-private-key: ${{ secrets.SSH_KEY }}
+        node-version: 20
 
-    - name: Add public instance to known_hosts
-      run: ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ env.PRIVATE_IP }} >> ~/.ssh/known_hosts
 
     - name: Install backend dependencies
       working-directory: ./server
-      run: npm install
+      run: |
+        npm install
 
     - name: Install frontend dependencies and build
       working-directory: ./client
@@ -37,20 +43,35 @@ jobs:
         npm run build
 
     - name: Archive project
-      run: tar czf fullstack.tar.gz -C . server client
-
-    - name: Copy project to private instance via public jump host
       run: |
-        scp -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} -o StrictHostKeyChecking=no fullstack.tar.gz ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }}:/tmp/
+        tar czf fullstack.tar.gz -C . server client
 
-    - name: Deploy on private EC2
+    - name: Copy archive to public EC2
+      run: |
+        scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@${{ env.PUBLIC_IP }}:/tmp/
+
+    - name: SSH into private EC2 via public jump and deploy
       run: |
         ssh -o ProxyJump=${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.PRIVATE_IP }} << 'EOF'
+          # Clean and extract
           sudo rm -rf /opt/fullstack
           sudo mkdir -p /opt/fullstack
           sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-          cd /opt/fullstack/server && npm install --legacy-peer-deps
-          cd /opt/fullstack/client && npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && npm install --legacy-peer-deps && npm run build
+
+          # Fix permissions
+          sudo chown -R ubuntu:ubuntu /opt/fullstack
+
+          # Backend setup
+          cd /opt/fullstack/server
+          npm install --legacy-peer-deps
+
+          # Frontend setup
+          cd /opt/fullstack/client
+          npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
+          npm install --legacy-peer-deps
+          npm run build
+
+          # Restart services
           sudo systemctl restart backend
           sudo systemctl restart frontend
-        EOF
+EOF
