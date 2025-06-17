@@ -8,9 +8,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      SSH_USER: ubuntu
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -24,29 +21,31 @@ jobs:
       run: ssh-keyscan -H ${{ secrets.PUBLIC_INSTANCE_IP }} >> ~/.ssh/known_hosts
 
     - name: Test SSH connection to public instance
-      run: ssh $SSH_USER@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
+      run: ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
 
-    - name: Build and Package
+    - name: Build and package fullstack app
       run: tar czf fullstack.tar.gz -C . server client
 
     - name: Copy app archive to public instance
-      run: scp fullstack.tar.gz $SSH_USER@${{ secrets.PUBLIC_INSTANCE_IP }}:/tmp/
+      run: scp fullstack.tar.gz ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }}:/tmp/
 
     - name: Deploy from public to private instance
       run: |
-        ssh $SSH_USER@${{ secrets.PUBLIC_INSTANCE_IP }} <<'EOF'
+        ssh -A ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} <<'EOF'
           set -e
-          
-          # Add private IP to known_hosts inside public EC2
+
+          echo "📡 Connecting to private instance..."
+
+          # Add private IP to known_hosts to avoid prompt
           ssh-keyscan -H ${{ secrets.PRIVATE_INSTANCE_IP }} >> ~/.ssh/known_hosts
-          
-          # Copy archive to private instance
-          scp /tmp/fullstack.tar.gz $SSH_USER@${{ secrets.PRIVATE_INSTANCE_IP }}:/tmp/
-          
+
+          # Copy app package to private instance
+          scp /tmp/fullstack.tar.gz ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }}:/tmp/
+
           # Run deployment steps on private instance
-          ssh $SSH_USER@${{ secrets.PRIVATE_INSTANCE_IP }} <<'INNER'
+          ssh ubuntu@${{ secrets.PRIVATE_INSTANCE_IP }} <<'INNER'
             set -e
-            echo "📦 Deploying to private instance at $(date)"
+            echo "🚀 Starting deployment at $(date)"
 
             sudo rm -rf /opt/fullstack
             sudo mkdir -p /opt/fullstack
@@ -65,6 +64,6 @@ jobs:
             sudo systemctl restart backend
             sudo systemctl restart frontend
 
-            echo "✅ Deployment finished at $(date)"
+            echo "✅ Deployment completed at $(date)"
           INNER
         EOF
