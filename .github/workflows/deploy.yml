@@ -17,8 +17,10 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_KEY }}
 
-    - name: Add public instance to known_hosts
-      run: ssh-keyscan -H ${{ secrets.PUBLIC_INSTANCE_IP }} >> ~/.ssh/known_hosts
+    - name: Add EC2 hosts to known_hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.PUBLIC_INSTANCE_IP }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ secrets.PRIVATE_INSTANCE_IP }} >> ~/.ssh/known_hosts
 
-    - name: Test SSH connection to public instance
-      run: ssh -o StrictHostKeyChecking=yes ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
+    - name: Test SSH connection
+      run: ssh ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
