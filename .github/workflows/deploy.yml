@@ -48,7 +48,8 @@ jobs:
           sudo systemctl stop backend.service frontend.service || true
           rm -rf /opt/fullstack
           mkdir -p /opt/fullstack
-          tar xzf /home/$USER/fullstack.tar.gz -C /opt/fullstack --strip-components=1
+          tar xzf /home/ubuntu/fullstack.tar.gz -C /opt/fullstack --strip-components=1
+
 
           cd /opt/fullstack/server
           npm install --legacy-peer-deps --no-audit
