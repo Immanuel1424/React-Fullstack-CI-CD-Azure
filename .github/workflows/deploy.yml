@@ -2,68 +2,23 @@ name: Deploy Fullstack App
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    env:
-      SSH_USER: ubuntu
-      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
-      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 20
 
     - name: Setup SSH key
       uses: webfactory/ssh-agent@v0.9.0
       with:
         ssh-private-key: ${{ secrets.SSH_KEY }}
 
-    - name: Add EC2 hosts to known_hosts
-      run: |
-        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
-        ssh-keyscan -H $PRIVATE_IP >> ~/.ssh/known_hosts
+    - name: Add public instance to known_hosts
+      run: ssh-keyscan -H ${{ secrets.PUBLIC_INSTANCE_IP }} >> ~/.ssh/known_hosts
 
-    - name: Build and Package
-      run: tar czf fullstack.tar.gz -C . server client
-
-    - name: Upload to Public Instance
-      run: |
-        scp fullstack.tar.gz $SSH_USER@$PUBLIC_IP:/tmp/
-        ssh $SSH_USER@$PUBLIC_IP "ls -lh /tmp/fullstack.tar.gz"
-
-    - name: Deploy on Private Instance via Jump Host
-      run: |
-        ssh $SSH_USER@$PUBLIC_IP <<'EOF'
-          set -e
-          scp /tmp/fullstack.tar.gz $SSH_USER@$PRIVATE_IP:/tmp/
-          ssh $SSH_USER@$PRIVATE_IP <<'INNER'
-            set -e
-            echo "Starting deployment at $(date)"
-            sudo rm -rf /opt/fullstack
-            sudo mkdir -p /opt/fullstack
-            sudo chown -R $USER:$USER /opt/fullstack
-            sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-
-            cd /opt/fullstack/server
-            npm ci --legacy-peer-deps
-
-            cd /opt/fullstack/client
-            npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
-            npm ci --legacy-peer-deps
-            npm run build
-
-            sudo systemctl restart backend
-            sudo systemctl restart frontend
-            echo "Deployment completed at $(date)"
-          INNER
-        EOF
+    - name: Test SSH connection to public instance
+      run: ssh -o StrictHostKeyChecking=yes ubuntu@${{ secrets.PUBLIC_INSTANCE_IP }} "echo '✅ Public instance connected!'"
