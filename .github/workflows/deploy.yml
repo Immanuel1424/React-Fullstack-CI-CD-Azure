@@ -1,9 +1,8 @@
-name: Fullstack App CI/CD
+name: Deploy Fullstack App
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -11,49 +10,53 @@ jobs:
 
     env:
       SSH_USER: ubuntu
+      PUBLIC_IP: ${{ secrets.PUBLIC_INSTANCE_IP }}
+      PRIVATE_IP: ${{ secrets.PRIVATE_INSTANCE_IP }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+
     - name: Setup SSH key
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/cft.pem
-        chmod 600 ~/.ssh/cft.pem
-        echo "Host *" >> ~/.ssh/config
-        echo "  IdentityFile ~/.ssh/cft.pem" >> ~/.ssh/config
-        echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
 
-    - name: Install dependencies and build frontend
+    - name: Install backend dependencies
+      working-directory: ./server
+      run: |
+        npm install
+
+    - name: Install frontend dependencies and build
       working-directory: ./client
       run: |
+        npm install ajv@6 ajv-keywords@3 --legacy-peer-deps
         npm install --legacy-peer-deps
         npm run build
 
-    - name: Archive fullstack app
+    - name: Archive project
       run: |
         tar czf fullstack.tar.gz -C . server client
 
-    - name: Upload to private EC2 via public jump host
+    - name: Copy project to public EC2 instance
       run: |
-        scp -o ProxyJump=${{ env.SSH_USER }}@${{ secrets.PUBLIC_INSTANCE_IP }} \
-            -o StrictHostKeyChecking=no \
-            fullstack.tar.gz ${{ env.SSH_USER }}@${{ secrets.PRIVATE_INSTANCE_IP }}:/tmp/
+        scp -o StrictHostKeyChecking=no fullstack.tar.gz $SSH_USER@${{ env.PUBLIC_IP }}:/tmp/
 
-    - name: Deploy app on private instance
+    - name: Deploy on EC2
       run: |
-        ssh -o ProxyJump=${{ env.SSH_USER }}@${{ secrets.PUBLIC_INSTANCE_IP }} \
-            -o StrictHostKeyChecking=no \
-            ${{ env.SSH_USER }}@${{ secrets.PRIVATE_INSTANCE_IP }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no $SSH_USER@${{ env.PUBLIC_IP }} << 'EOF'
           sudo rm -rf /opt/fullstack
           sudo mkdir -p /opt/fullstack
-          sudo tar -xzf /tmp/fullstack.tar.gz -C /opt/fullstack
-          cd /opt/fullstack/server
-          npm install
+          sudo tar xzf /tmp/fullstack.tar.gz -C /opt/fullstack
+          cd /opt/fullstack/server && npm install --legacy-peer-deps
+          cd /opt/fullstack/client && npm install ajv@6 ajv-keywords@3 --legacy-peer-deps && npm install --legacy-peer-deps && npm run build
           sudo systemctl restart fullstack-backend
-          cd /opt/fullstack/client
-          npm install --legacy-peer-deps
-          npm run build
-          sudo systemctl restart fullstack-frontend
+          sudo systemctl restart nginx
         EOF
